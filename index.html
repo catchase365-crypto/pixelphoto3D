@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D 像素艺术生成器</title>
+    <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --panel-bg: rgba(20, 20, 20, 0.85);
+            --text-color: #eee;
+            --accent-color: #00d2ff;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-color);
+        }
+
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI 面板 */
+        #ui-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 320px;
+            max-width: 90vw;
+            max-height: 90vh;
+            background-color: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 10;
+            overflow-y: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transition: transform 0.3s ease;
+        }
+
+        #ui-container.collapsed {
+            transform: translateX(120%);
+        }
+
+        /* 切换 UI 的按钮 */
+        #toggle-ui-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 20;
+            background: rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0 0 15px 0;
+            text-align: center;
+            font-weight: 300;
+            letter-spacing: 2px;
+            background: linear-gradient(90deg, #fff, #aaa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        /* 按钮网格 */
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+            gap: 8px;
+        }
+        
+        .btn-grid-wide {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        button {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ccc;
+            padding: 8px 5px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        button.active {
+            background: var(--accent-color);
+            color: #000;
+            border-color: var(--accent-color);
+            font-weight: bold;
+        }
+
+        .action-btn {
+            width: 100%;
+            padding: 12px;
+            font-size: 0.9rem;
+            margin-top: 5px;
+            background: linear-gradient(45deg, #444, #666);
+            color: white;
+            border: none;
+        }
+
+        #randomizeBtn { background: linear-gradient(45deg, #7928ca, #ff0080); }
+        #uploadBtn { background: linear-gradient(45deg, #00b09b, #96c93d); }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            border-radius: 6px;
+            outline: none;
+        }
+
+        /* 自定义滑块和复选框样式 */
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 40px;
+            height: 20px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider-track {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #555;
+            transition: .4s;
+            border-radius: 20px;
+        }
+
+        .slider-track:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider-track {
+            background-color: var(--accent-color);
+        }
+
+        input:checked + .slider-track:before {
+            transform: translateX(20px);
+        }
+
+        #brightness-control-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, opacity 0.3s ease;
+            opacity: 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            padding: 0 10px;
+        }
+
+        #brightness-control-panel.visible {
+            max-height: 60px;
+            opacity: 1;
+            padding: 10px;
+            margin-bottom: 15px;
+        }
+
+        input[type=range] {
+            width: 100%;
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            margin-top: -6px;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #555;
+            border-radius: 2px;
+        }
+
+        /* 3D 提示 */
+        .hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.4);
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 5;
+            text-align: center;
+        }
+    </style>
+    <!-- 引入 Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    
+    <button id="toggle-ui-btn">⚙️</button>
+
+    <div id="ui-container">
+        <h1>3D 像素艺术</h1>
+        
+        <div class="control-group">
+            <div class="btn-grid-wide">
+                <button id="randomizeBtn" class="action-btn">🎲 随机配色</button>
+                <button id="uploadBtn" class="action-btn">📷 上传图片</button>
+            </div>
+            <input type="file" id="imageUploader" accept="image/*" style="display: none;">
+        </div>
+
+        <!-- 亮度控制区域 -->
+        <div class="control-group">
+            <div class="toggle-row">
+                <span class="label" style="margin:0; color:#fff;">锁定亮度 (固定光照)</span>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="brightnessLock">
+                    <span class="slider-track"></span>
+                </label>
+            </div>
+            
+            <div id="brightness-control-panel">
+                <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+                    <span class="label">亮度调节</span>
+                    <span class="label" id="brightnessValue">100%</span>
+                </div>
+                <input type="range" id="brightnessSlider" min="0" max="200" value="100">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <span class="label">3D 表面效果</span>
+            <select id="geometry-select">
+                <option value="cube">纯平 (立方体)</option>
+                <option value="bevel">倒角 (平滑块)</option>
+                <option value="sphere">圆点 (球体)</option>
+                <option value="cylinder">点阵 (圆柱)</option>
+                <option value="diamond">钻石 (八面体)</option>
+                <option value="pyramid">金字塔 (锥体)</option>
+                <option value="capsule">胶囊 (药丸)</option>
+                <option value="gem">水晶 (十二面体)</option>
+                <option value="hex">蜂巢 (六棱柱)</option>
+                <option value="torus">甜甜圈 (圆环)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <span class="label">画布形状</span>
+            <div class="btn-grid" id="shape-controls">
+                <button data-ratio="1:1" class="shape-btn active">1:1</button>
+                <button data-ratio="9:19.5" class="shape-btn">9:19.5</button>
+                <button data-ratio="16:9" class="shape-btn">16:9</button>
+                <button data-ratio="16:10" class="shape-btn">16:10</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <span class="label">分辨率密度</span>
+            <div class="btn-grid" id="density-controls">
+                <button data-density="25" class="density-btn">低</button>
+                <button data-density="50" class="density-btn active">中</button>
+                <button data-density="75" class="density-btn">高</button>
+                <button data-density="100" class="density-btn">极高</button>
+            </div>
+        </div>
+        
+        <div class="control-group" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top:10px;">
+             <button id="resetCamBtn" style="width:100%">重置视角</button>
+        </div>
+    </div>
+
+    <div class="hint">单指旋转 · 双指缩放/平移</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- 核心变量 ---
+        let scene, camera, renderer, controls, instancedMesh;
+        // 光照变量
+        let ambientLight, dirLight, pointLight, bottomLight;
+        
+        let GRID_WIDTH = 50;
+        let GRID_HEIGHT = 50;
+        let pixelBaseColors = []; // 存储 HSL/RGB 数据
+        
+        // 状态
+        let currentRatio = '1:1';
+        let currentDensity = 50;
+        let currentGeometryType = 'cube';
+        let isBrightnessLocked = false;
+
+        const container = document.getElementById('canvas-container');
+
+        // --- 初始化 Three.js ---
+        function init() {
+            // 1. 场景
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a1a);
+            scene.fog = new THREE.FogExp2(0x1a1a1a, 0.008);
+
+            // 2. 相机
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 0, 80);
+
+            // 3. 渲染器
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            container.appendChild(renderer.domElement);
+
+            // 4. 控制器
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.enablePan = true;
+            controls.minDistance = 10;
+            controls.maxDistance = 200;
+
+            // 5. 灯光系统
+            // 环境光：负责整体亮度，锁定亮度时主要调节它
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            // 主光源：负责阴影和立体感
+            dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(50, 50, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            scene.add(dirLight);
+
+            // 装饰彩灯
+            pointLight = new THREE.PointLight(0x00d2ff, 1, 100);
+            pointLight.position.set(-20, 20, 20);
+            scene.add(pointLight);
+
+            bottomLight = new THREE.PointLight(0xff0080, 0.8, 100);
+            bottomLight.position.set(20, -20, 10);
+            scene.add(bottomLight);
+
+            // 窗口调整
+            window.addEventListener('resize', onWindowResize);
+
+            // 初始构建
+            setupGridLogic();
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- 几何体工厂 ---
+        function getGeometry(type) {
+            const size = 0.9;
+            switch (type) {
+                case 'cube': return new THREE.BoxGeometry(size, size, size);
+                case 'bevel': return new THREE.BoxGeometry(size, size, 0.4); 
+                case 'sphere': return new THREE.SphereGeometry(size / 2, 16, 16);
+                case 'cylinder': return new THREE.CylinderGeometry(size / 2, size / 2, size, 16);
+                case 'diamond': return new THREE.OctahedronGeometry(size / 1.5, 0);
+                case 'pyramid': return new THREE.ConeGeometry(size / 1.5, size, 4);
+                case 'capsule': return new THREE.CapsuleGeometry(size / 3, size / 2, 4, 8);
+                case 'gem': return new THREE.DodecahedronGeometry(size / 1.8);
+                case 'hex': return new THREE.CylinderGeometry(size / 2, size / 2, size, 6);
+                case 'torus': return new THREE.TorusGeometry(size / 3, size / 8, 8, 16);
+                default: return new THREE.BoxGeometry(size, size, size);
+            }
+        }
+
+        // --- 网格逻辑 ---
+        function setupGridLogic() {
+            const [ratioW, ratioH] = currentRatio.split(':').map(Number);
+            if (ratioW >= ratioH) { 
+                GRID_WIDTH = currentDensity;
+                GRID_HEIGHT = Math.round(currentDensity * ratioH / ratioW);
+            } else { 
+                GRID_HEIGHT = currentDensity;
+                GRID_WIDTH = Math.round(currentDensity * ratioW / ratioH);
+            }
+            GRID_WIDTH = Math.max(1, GRID_WIDTH);
+            GRID_HEIGHT = Math.max(1, GRID_HEIGHT);
+
+            if (!pixelBaseColors.length || pixelBaseColors.length !== GRID_WIDTH * GRID_HEIGHT) {
+                generateDiagonalColors();
+            } else {
+                rebuildMesh();
+            }
+        }
+
+        function generateDiagonalColors() {
+            const totalPixels = GRID_WIDTH * GRID_HEIGHT;
+            const diagonalCount = GRID_WIDTH + GRID_HEIGHT - 1;
+            pixelBaseColors = new Array(totalPixels);
+
+            const diagonalColors = [];
+            for (let i = 0; i < diagonalCount; i++) {
+                const hue = Math.random() * 360;
+                const saturation = 70 + Math.random() * 30;
+                const lightness = 40 + Math.random() * 20; 
+                diagonalColors.push(new THREE.Color(`hsl(${hue}, ${saturation}%, ${lightness}%)`));
+            }
+
+            for (let i = 0; i < totalPixels; i++) {
+                const x = i % GRID_WIDTH;
+                const y = Math.floor(i / GRID_WIDTH);
+                pixelBaseColors[i] = diagonalColors[x + y];
+            }
+            rebuildMesh();
+        }
+
+        function rebuildMesh() {
+            if (instancedMesh) {
+                scene.remove(instancedMesh);
+                instancedMesh.geometry.dispose();
+                instancedMesh.material.dispose();
+            }
+
+            const geometry = getGeometry(currentGeometryType);
+            
+            const material = new THREE.MeshPhysicalMaterial({
+                color: 0xffffff,
+                metalness: 0.1,
+                roughness: 0.2,
+                clearcoat: 0.8,
+                clearcoatRoughness: 0.1,
+                transmission: currentGeometryType === 'diamond' || currentGeometryType === 'gem' ? 0.2 : 0,
+            });
+
+            const count = GRID_WIDTH * GRID_HEIGHT;
+            instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+            instancedMesh.castShadow = true;
+            instancedMesh.receiveShadow = true;
+
+            const dummy = new THREE.Object3D();
+            const offsetX = (GRID_WIDTH - 1) * 0.5;
+            const offsetY = (GRID_HEIGHT - 1) * 0.5;
+
+            for (let i = 0; i < count; i++) {
+                const x = i % GRID_WIDTH;
+                const y = Math.floor(i / GRID_WIDTH);
+                
+                dummy.position.set(x - offsetX, -(y - offsetY), 0);
+                
+                if (currentGeometryType === 'pyramid') {
+                    dummy.rotation.x = Math.PI / 2;
+                } else if (currentGeometryType === 'cylinder' || currentGeometryType === 'hex') {
+                    dummy.rotation.x = Math.PI / 2; 
+                } else {
+                    dummy.rotation.set(0, 0, 0);
+                }
+
+                dummy.updateMatrix();
+                instancedMesh.setMatrixAt(i, dummy.matrix);
+
+                if (pixelBaseColors[i]) {
+                    instancedMesh.setColorAt(i, pixelBaseColors[i]);
+                } else {
+                    instancedMesh.setColorAt(i, new THREE.Color(0xffffff));
+                }
+            }
+
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            instancedMesh.instanceColor.needsUpdate = true;
+            scene.add(instancedMesh);
+        }
+
+        // --- 图片上传逻辑 ---
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = GRID_WIDTH;
+                    canvas.height = GRID_HEIGHT;
+                    const ctx = canvas.getContext('2d');
+
+                    const gridAspect = GRID_WIDTH / GRID_HEIGHT;
+                    const imgAspect = img.naturalWidth / img.naturalHeight;
+                    let sx = 0, sy = 0, sWidth = img.naturalWidth, sHeight = img.naturalHeight;
+
+                    if (imgAspect > gridAspect) {
+                        sWidth = img.naturalHeight * gridAspect;
+                        sx = (img.naturalWidth - sWidth) / 2;
+                    } else {
+                        sHeight = img.naturalWidth / gridAspect;
+                        sy = (img.naturalHeight - sHeight) / 2;
+                    }
+
+                    ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, GRID_WIDTH, GRID_HEIGHT);
+                    const data = ctx.getImageData(0, 0, GRID_WIDTH, GRID_HEIGHT).data;
+
+                    const totalPixels = GRID_WIDTH * GRID_HEIGHT;
+                    pixelBaseColors = new Array(totalPixels);
+                    for (let i = 0; i < totalPixels; i++) {
+                        const r = data[i * 4] / 255;
+                        const g = data[i * 4 + 1] / 255;
+                        const b = data[i * 4 + 2] / 255;
+                        pixelBaseColors[i] = new THREE.Color(r, g, b);
+                    }
+                    
+                    rebuildMesh();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // --- UI 事件 ---
+        const uiContainer = document.getElementById('ui-container');
+        document.getElementById('toggle-ui-btn').addEventListener('click', () => {
+            uiContainer.classList.toggle('collapsed');
+        });
+
+        document.getElementById('randomizeBtn').addEventListener('click', () => {
+            generateDiagonalColors(); 
+        });
+
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            document.getElementById('imageUploader').click();
+        });
+        document.getElementById('imageUploader').addEventListener('change', handleImageUpload);
+
+        document.getElementById('geometry-select').addEventListener('change', (e) => {
+            currentGeometryType = e.target.value;
+            rebuildMesh();
+        });
+
+        document.getElementById('shape-controls').addEventListener('click', (e) => {
+            if (e.target.classList.contains('shape-btn')) {
+                document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentRatio = e.target.dataset.ratio;
+                pixelBaseColors = []; 
+                setupGridLogic();
+                controls.reset();
+            }
+        });
+
+        document.getElementById('density-controls').addEventListener('click', (e) => {
+            if (e.target.classList.contains('density-btn')) {
+                document.querySelectorAll('.density-btn').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentDensity = parseInt(e.target.dataset.density);
+                pixelBaseColors = [];
+                setupGridLogic();
+            }
+        });
+
+        document.getElementById('resetCamBtn').addEventListener('click', () => {
+            controls.reset();
+        });
+
+        // --- 亮度锁定逻辑 ---
+        const brightnessLockCheckbox = document.getElementById('brightnessLock');
+        const brightnessPanel = document.getElementById('brightness-control-panel');
+        const brightnessSlider = document.getElementById('brightnessSlider');
+        const brightnessValue = document.getElementById('brightnessValue');
+
+        function updateLightingMode() {
+            isBrightnessLocked = brightnessLockCheckbox.checked;
+
+            if (isBrightnessLocked) {
+                // 开启锁定：显示面板
+                brightnessPanel.classList.add('visible');
+                
+                // 切换到“固定光照”模式
+                // 大幅增加环境光，模拟自发光/平面光效果
+                // 降低方向光和点光源的影响，减少阴影
+                const sliderVal = parseInt(brightnessSlider.value) / 100;
+                ambientLight.intensity = 1.0 * sliderVal; 
+                dirLight.intensity = 0.2; 
+                pointLight.intensity = 0.2;
+                bottomLight.intensity = 0.2;
+
+            } else {
+                // 关闭锁定：隐藏面板，恢复默认光照
+                brightnessPanel.classList.remove('visible');
+                
+                // 恢复默认的立体光照
+                ambientLight.intensity = 0.4;
+                dirLight.intensity = 1.5;
+                pointLight.intensity = 1;
+                bottomLight.intensity = 0.8;
+            }
+        }
+
+        function updateBrightnessLevel() {
+            if (!isBrightnessLocked) return;
+            
+            const val = parseInt(brightnessSlider.value);
+            brightnessValue.textContent = val + '%';
+            
+            // 动态调节环境光强度
+            const intensity = (val / 100) * 1.5; // 最大亮度系数
+            ambientLight.intensity = intensity;
+        }
+
+        brightnessLockCheckbox.addEventListener('change', updateLightingMode);
+        brightnessSlider.addEventListener('input', updateBrightnessLevel);
+
+
+        // 启动
+        init();
+
+    </script>
+</body>
+</html>
+
+
